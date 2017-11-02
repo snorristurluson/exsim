@@ -8,9 +8,12 @@ defmodule Solarsystem do
   use GenServer
 
   def start(name) do
-    Logger.debug("Starting #{name}")
+    Logger.info "Starting #{name}"
+    case GenServer.whereis({:global, name}) do
+      :nil -> GenServer.start_link(__MODULE__, name, [{:name, {:global, name}}])
+      pid -> {:ok, pid}
+    end
 
-    GenServer.start_link(__MODULE__, name, [{:name, {:global, name}}])
   end
 
   def add_player(pid, player) do
@@ -24,15 +27,25 @@ defmodule Solarsystem do
   # Server callbacks
 
   def init(name) do
-    Logger.debug("init for #{name}")
-    {:ok, %{players: []}}
+    Logger.info "init for #{name}"
+    {:ok, pid} = PhysicsProxy.start_link(name, 4041)
+    {:ok, %{players: [], physics: pid}}
   end
 
   def handle_call({:add_player, player}, _from, state) do
+    Logger.info "Adding player"
     player_id = Player.get_id(player)
     Logger.info "Adding player #{player_id}"
+    ship = Player.get_ship(player)
+    typeid = Ship.get_typeid(ship)
+    {x, y, z} = Ship.get_position(ship)
+    command = %{command: "addship", owner: player_id, type: typeid, position: %{x: x, y: y, z: z}}
+    {:ok, json} = Poison.encode(command)
+    Logger.info "#{json}"
+    PhysicsProxy.send_command(state[:physics], json)
     player_list = state[:players]
-    {:reply, :ok, %{players: [player|player_list]}}
+    state = Map.put(state, :players, player_list)
+    {:reply, :ok, state}
   end
 
   def handle_call(msg, _from, state) do

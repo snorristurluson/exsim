@@ -10,14 +10,15 @@ defmodule Player do
   def start_link(id, socket) do
     name = "player_#{id}"
     state = %{id: id, socket: socket}
-    {:ok, pid} = GenServer.start_link(__MODULE__, state, [{:name, {:global, name}}])
-    solarsystem = GenServer.whereis({:global, "ex1"})
-    Solarsystem.add_player(solarsystem, pid)
-    {:ok, pid}
+    GenServer.start_link(__MODULE__, state, [{:name, {:global, name}}])
   end
 
   def get_id(pid) do
     GenServer.call(pid, {:get_id})
+  end
+
+  def get_ship(pid) do
+    GenServer.call(pid, {:get_ship})
   end
 
   def handle_data(pid, data) do
@@ -32,11 +33,18 @@ defmodule Player do
 
   def init(state) do
     Logger.info "Starting player #{state[:id]}"
+    {:ok, ship} = Ship.start_link(state[:id], 42)
+    Logger.info "Starting player #{state[:id]} - created ship"
+    state = Map.put(state, :ship, ship)
     {:ok, state}
   end
 
   def handle_call({:get_id}, _from, state) do
     {:reply, state[:id], state}
+  end
+
+  def handle_call({:get_ship}, _from, state) do
+    {:reply, state[:ship], state}
   end
 
   def handle_call({:handle_data, data}, _from, state) do

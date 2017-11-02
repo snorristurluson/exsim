@@ -10,7 +10,6 @@ defmodule Solarsystem.Application do
     children = [
       {Task.Supervisor, name: Solarsystem.TaskSupervisor},
       {Task, fn -> Listener.accept(4040) end},
-      %{id: "ex1", start: {Solarsystem, :start, ["ex1"]}}
     ]
 
     opts = [strategy: :one_for_one, name: Solarsystem.Supervisor]

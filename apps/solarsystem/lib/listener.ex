@@ -36,6 +36,8 @@ defmodule Listener do
 
   defp handle_login(socket, %{:user => user}) do
     {:ok, player} = Player.start_link(user, socket)
+    {:ok, solarsystem} = Solarsystem.start("ex1")
+    Solarsystem.add_player(solarsystem, player)
     {:ok, pid} = Task.Supervisor.start_child(
       Solarsystem.TaskSupervisor,
       fn -> serve(socket, player) end)

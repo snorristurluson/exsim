@@ -17,10 +17,16 @@ defmodule PhysicsProxy do
   def init({name, port}) do
     {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, {:packet, 0}])
     Logger.info "Connected on port #{port}"
+
+    {:ok, json} = Poison.encode(%{command: "setmain"})
+    Logger.info "Send: #{json}"
+    :gen_tcp.send(socket, json)
+
     {:ok, %{name: name, socket: socket}}
   end
 
-  def handle_call({:send_command, json}, _from, state) do
+  def handle_call({:send_command, command}, _from, state) do
+    {:ok, json} = Poison.encode(command)
     Logger.info "Send: #{json}"
     :gen_tcp.send(state[:socket], json)
     {:reply, :ok, state}

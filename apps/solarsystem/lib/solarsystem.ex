@@ -28,6 +28,7 @@ defmodule Solarsystem do
 
   def init(name) do
     Logger.info "init for #{name}"
+    Process.send_after(self(), {:tick}, 250)
     {:ok, pid} = PhysicsProxy.start_link(name, 4041)
     {:ok, %{players: [], physics: pid}}
   end
@@ -40,9 +41,7 @@ defmodule Solarsystem do
     typeid = Ship.get_typeid(ship)
     {x, y, z} = Ship.get_position(ship)
     command = %{command: "addship", owner: player_id, type: typeid, position: %{x: x, y: y, z: z}}
-    {:ok, json} = Poison.encode(command)
-    Logger.info "#{json}"
-    PhysicsProxy.send_command(state[:physics], json)
+    PhysicsProxy.send_command(state[:physics], command)
     player_list = state[:players]
     state = Map.put(state, :players, player_list)
     {:reply, :ok, state}
@@ -56,6 +55,15 @@ defmodule Solarsystem do
   def handle_cast({:broadcast, message}, state) do
     Logger.info "Broadcasting message"
     send_message_to_players(message, state[:players])
+    {:noreply, state}
+  end
+
+  def handle_info({:tick}, state) do
+    PhysicsProxy.send_command(state[:physics], %{command: "stepsimulation", timestep: 0.250})
+    PhysicsProxy.send_command(state[:physics], %{command: "getstate"})
+
+    Process.send_after(self(), {:tick}, 250)
+
     {:noreply, state}
   end
 

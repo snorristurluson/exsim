@@ -7,11 +7,14 @@ defmodule Ship do
 
   use GenServer
 
-  def start_link(owner, typeid) do
-    state = %{owner: owner, typeid: typeid}
+  def start_link(owner, typeid, socket) do
+    state = %{owner: owner, typeid: typeid, socket: socket}
     GenServer.start_link(__MODULE__, state, [])
   end
 
+  def set_solarsystem(pid, solarsystem) do
+    GenServer.call(pid, {:set_solarsystem, solarsystem})
+  end
   def get_position(pid) do
     GenServer.call(pid, {:get_position})
   end
@@ -22,6 +25,14 @@ defmodule Ship do
 
   def get_typeid(pid) do
     GenServer.call(pid, {:get_typeid})
+  end
+
+  def update(pid) do
+    GenServer.cast(pid, {:update})
+  end
+
+  def send_solarsystem_state(pid, solarsystem_state) do
+    GenServer.cast(pid, {:send_solarsystem_state, solarsystem_state})
   end
 
   # Server callbacks
@@ -42,12 +53,29 @@ defmodule Ship do
     {:reply, :ok, state}
   end
 
+  def handle_call({:set_solarsystem, solarsystem}, _from, state) do
+    state = Map.put(state, :solarsystem, solarsystem)
+    {:reply, :ok, state}
+  end
+
   def handle_call({:get_typeid}, _from, state) do
     {:reply, state[:typeid], state}
   end
 
   def handle_call(_msg, _from, state) do
     {:reply, :ok, state}
+  end
+
+  def handle_cast({:update}, state) do
+    # todo: send queued commands
+    Solarsystem.notify_ship_update_done(state[:solarsystem], self())
+    {:noreply, state}
+  end
+
+  def handle_cast({:send_solarsystem_state, solarsystem_state}, state) do
+    {:ok, json} = Poison.encode(solarsystem_state)
+    :gen_tcp.send(state[:socket], json)
+    {:noreply, state}
   end
 
   def handle_cast(_msg, state) do

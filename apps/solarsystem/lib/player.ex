@@ -33,7 +33,7 @@ defmodule Player do
 
   def init(state) do
     Logger.info "Starting player #{state[:id]}"
-    {:ok, ship} = Ship.start_link(state[:id], 42)
+    {:ok, ship} = Ship.start_link(state[:id], 42, state[:socket])
     Logger.info "Starting player #{state[:id]} - created ship"
     state = Map.put(state, :ship, ship)
     {:ok, state}

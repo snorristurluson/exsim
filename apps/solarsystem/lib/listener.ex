@@ -23,8 +23,15 @@ defmodule Listener do
   end
 
   def authentication_loop(socket) do
-    {:ok, data} = :gen_tcp.recv(socket, 0)
-    Logger.info data
+    Logger.info "Waiting for authentication"
+    case :gen_tcp.recv(socket, 0) do
+      {:ok, data} -> handle_data(socket, data)
+      {:error, :closed} -> :ok
+    end
+  end
+
+  defp handle_data(socket, data) do
+    Logger.info "Got data #{data}"
     json = Poison.decode(data, keys: :atoms!)
     case json do
       {:ok, %{} = details} -> handle_login(socket, details)

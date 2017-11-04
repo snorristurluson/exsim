@@ -24,26 +24,42 @@ defmodule Solarsystem do
     GenServer.cast(pid, {:broadcast, message})
   end
 
+  def notify_ship_update_done(pid, ship) do
+    GenServer.cast(pid, {:notify_ship_update_done, ship})
+  end
+
+  def distribute_state(pid, solarsystem_state) do
+    GenServer.cast(pid, {:distribute_state, solarsystem_state})
+  end
+
   # Server callbacks
 
   def init(name) do
     Logger.info "init for #{name}"
-    Process.send_after(self(), {:tick}, 250)
-    {:ok, pid} = PhysicsProxy.start_link(name, 4041)
-    {:ok, %{players: [], physics: pid}}
+    Process.send_after(self(), {:start_tick}, 250)
+    {:ok, pid} = PhysicsProxy.start_link(self(), name, 4041)
+    {:ok, %{
+      players: [],
+      ships: [],
+      pending_ships: [],
+      physics: pid}
+    }
   end
 
   def handle_call({:add_player, player}, _from, state) do
-    Logger.info "Adding player"
     player_id = Player.get_id(player)
     Logger.info "Adding player #{player_id}"
+
     ship = Player.get_ship(player)
+    Ship.set_solarsystem(ship, self())
     typeid = Ship.get_typeid(ship)
     {x, y, z} = Ship.get_position(ship)
     command = %{command: "addship", owner: player_id, type: typeid, position: %{x: x, y: y, z: z}}
     PhysicsProxy.send_command(state[:physics], command)
-    player_list = state[:players]
-    state = Map.put(state, :players, player_list)
+
+    {_, state} = Map.get_and_update(state, :players, fn current -> {:players, [player | current]} end)
+    {_, state} = Map.get_and_update(state, :ships, fn current -> {:ships, [ship | current]} end)
+
     {:reply, :ok, state}
   end
 
@@ -58,12 +74,35 @@ defmodule Solarsystem do
     {:noreply, state}
   end
 
-  def handle_info({:tick}, state) do
+  def handle_cast({:notify_ship_update_done, ship}, state) do
+    state = Map.put(state, :tick_start_time, System.monotonic_time(:millisecond))
+    {_, newstate} = Map.get_and_update(state, :pending_ships, fn current -> {:pending_ships, List.delete(current, ship)} end)
+    case newstate[:pending_ships] do
+      [] -> GenServer.cast(self(), {:end_tick})
+    end
+    {:noreply, newstate}
+  end
+
+  def handle_cast({:end_tick}, state) do
     PhysicsProxy.send_command(state[:physics], %{command: "stepsimulation", timestep: 0.250})
     PhysicsProxy.send_command(state[:physics], %{command: "getstate"})
 
-    Process.send_after(self(), {:tick}, 250)
+    tick_duration = System.monotonic_time(:millisecond) - state[:tick_start_time]
+    Process.send_after(self(), {:start_tick}, 250 - tick_duration)
 
+    {:noreply, state}
+  end
+
+  def handle_cast({:distribute_state, solarsystem_state}, state) do
+    Logger.info "Distributing state"
+    Enum.each(state[:ships], fn ship -> Ship.send_solarsystem_state(ship, solarsystem_state) end)
+    {:noreply, state}
+  end
+
+  def handle_info({:start_tick}, state) do
+    ships = state[:ships]
+    Enum.each(ships, fn ship -> Ship.update(ship) end)
+    state = Map.put(state, :pending_ships, ships)
     {:noreply, state}
   end
 

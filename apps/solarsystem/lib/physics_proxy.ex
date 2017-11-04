@@ -5,29 +5,26 @@ defmodule PhysicsProxy do
 
   use GenServer
 
-  def start_link(name, port) do
-    Logger.info "Starting physics for #{name}"
-    GenServer.start_link(__MODULE__, {name, port}, [{:name, {:global, "physics_" <> name}}])
+  def start_link(solarsystem, name, port) do
+    GenServer.start_link(__MODULE__, {solarsystem, port}, [{:name, {:global, "physics_" <> name}}])
   end
 
   def send_command(pid, json) do
     GenServer.call(pid, {:send_command, json})
   end
 
-  def init({name, port}) do
+  def init({solarsystem, port}) do
     {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, {:packet, 0}])
     Logger.info "Connected on port #{port}"
 
     {:ok, json} = Poison.encode(%{command: "setmain"})
-    Logger.info "Send: #{json}"
     :gen_tcp.send(socket, json)
 
-    {:ok, %{name: name, socket: socket}}
+    {:ok, %{solarsystem: solarsystem, socket: socket}}
   end
 
   def handle_call({:send_command, command}, _from, state) do
     {:ok, json} = Poison.encode(command)
-    Logger.info "Send: #{json}"
     :gen_tcp.send(state[:socket], json)
     {:reply, :ok, state}
   end
@@ -41,13 +38,24 @@ defmodule PhysicsProxy do
   end
 
   def handle_info({:tcp, socket, data}, state) do
-    Logger.info "Received: #{data}"
+    lines = String.split(data, "\n")
+    Enum.each(lines, fn x -> handle_item(x, state) end)
     {:noreply, state}
   end
 
-  def handle_info({port, {:data, data}}, %{port: port, name: name}=state) do
-    Logger.info "#{name}: #{data}"
-    {:noreply, state}
+  defp handle_item(item, state) do
+    Logger.info "Received: #{item}"
+    json = try do
+      decoded = Poison.decode!(item)
+      Logger.info "Decoded json"
+      decoded
+    rescue
+      _ -> "error"
+    end
+    IO.inspect(json)
+    case json do
+      %{"state" => solarsystem_state} -> Solarsystem.distribute_state(state[:solarsystem], solarsystem_state)
+      _ -> :ok
+    end
   end
-
 end

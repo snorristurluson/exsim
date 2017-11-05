@@ -62,14 +62,11 @@ defmodule Player do
   end
 
   def handle_cast({:handle_command, cmd}, state) do
-    Logger.info "handle_command received: #{cmd}"
-    IO.inspect state
     json = try do
       Poison.decode!(cmd)
     rescue
       _ -> "error"
     end
-    IO.inspect(json)
     case json do
       %{"settargetlocation" => location} -> set_target_location(location, state)
       _ -> state

@@ -9,11 +9,10 @@ defmodule Solarsystem do
 
   def start(name) do
     Logger.info "Starting #{name}"
-    case GenServer.whereis({:global, name}) do
-      :nil -> GenServer.start_link(__MODULE__, name, [{:name, {:global, name}}])
-      pid -> {:ok, pid}
+    case GenServer.start_link(__MODULE__, name, [{:name, {:global, name}}]) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
     end
-
   end
 
   def add_player(pid, player) do
@@ -39,10 +38,11 @@ defmodule Solarsystem do
   # Server callbacks
 
   def init(name) do
-    Logger.info "init for #{name}"
+    Logger.info "Solarsystem init for #{name}"
     Process.send_after(self(), {:start_tick}, 250)
     {:ok, pid} = PhysicsProxy.start_link(self(), name, 4041)
     {:ok, %{
+      name: name,
       players: [],
       ships: [],
       pending_ships: [],
@@ -52,7 +52,7 @@ defmodule Solarsystem do
 
   def handle_call({:add_player, player}, _from, state) do
     player_id = Player.get_id(player)
-    Logger.info "Adding player #{player_id}"
+    Logger.info "Adding player #{player_id} to solarsystem #{state[:name]}"
 
     ship = Player.get_ship(player)
     Ship.set_solarsystem(ship, self())
@@ -83,6 +83,7 @@ defmodule Solarsystem do
     {_, newstate} = Map.get_and_update(state, :pending_ships, fn current -> {current, List.delete(current, ship)} end)
     case newstate[:pending_ships] do
       [] -> GenServer.cast(self(), {:end_tick})
+      _ -> nil
     end
     {:noreply, newstate}
   end
@@ -92,13 +93,17 @@ defmodule Solarsystem do
     PhysicsProxy.send_command(state[:physics], %{command: "getstate"})
 
     tick_duration = System.monotonic_time(:millisecond) - state[:tick_start_time]
+    tick_duration = if tick_duration > 250 do
+      250
+    else
+      tick_duration
+    end
     Process.send_after(self(), {:start_tick}, 250 - tick_duration)
 
     {:noreply, state}
   end
 
   def handle_cast({:distribute_state, solarsystem_state}, state) do
-    Logger.info "Distributing state"
     Enum.each(state[:ships], fn ship -> Ship.send_solarsystem_state(ship, solarsystem_state) end)
     {:noreply, state}
   end
@@ -124,8 +129,8 @@ defmodule Solarsystem do
 
   defp send_queued_physics_commands_helper(physics, commands) do
     case :queue.out(commands) do
-      {:empty, commands} ->
-        Logger.info "queue is empty"
+      {:empty, _} ->
+        nil
       {{:value, cmd}, remaining} ->
         PhysicsProxy.send_command(physics, cmd)
         send_queued_physics_commands_helper(physics, remaining)

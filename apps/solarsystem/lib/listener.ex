@@ -15,8 +15,7 @@ defmodule Listener do
   defp loop_acceptor(socket) do
     {:ok, client} = :gen_tcp.accept(socket)
     Logger.info "Connection established"
-    {:ok, pid} = Task.Supervisor.start_child(
-        Solarsystem.TaskSupervisor,
+    {:ok, pid} = Task.start_link(
         fn -> authentication_loop(client) end)
     :ok = :gen_tcp.controlling_process(client, pid)
     loop_acceptor(socket)
@@ -44,8 +43,7 @@ defmodule Listener do
     {:ok, player} = Player.start_link(user, socket)
     {:ok, solarsystem} = Solarsystem.start("ex1")
     Solarsystem.add_player(solarsystem, player)
-    {:ok, pid} = Task.Supervisor.start_child(
-      Solarsystem.TaskSupervisor,
+    {:ok, pid} = Task.start_link(
       fn -> serve(socket, player) end)
     :ok = :gen_tcp.controlling_process(socket, pid)
   end
@@ -58,9 +56,7 @@ defmodule Listener do
 
   defp serve(socket, player) do
     {:ok, data} = :gen_tcp.recv(socket, 0)
-    Logger.info "serve received #{data}"
     lines = String.split(data, "\n", [:trim])
-    IO.inspect(lines)
     Enum.each(lines, fn item -> Player.handle_command(player, item) end)
     serve(socket, player)
   end

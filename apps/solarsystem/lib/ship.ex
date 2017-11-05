@@ -85,8 +85,6 @@ defmodule Ship do
   end
 
   def handle_cast({:update}, state) do
-    Logger.info "ship update"
-    IO.inspect(state)
     {commands, state} = Map.get_and_update(
       state,
       :pending_commands,

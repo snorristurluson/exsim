@@ -25,7 +25,6 @@ defmodule PhysicsProxy do
 
   def handle_call({:send_command, command}, _from, state) do
     {:ok, json} = Poison.encode(command)
-    Logger.info "Physics proxy send command #{json}"
     :gen_tcp.send(state[:socket], json <> "\n")
     {:reply, :ok, state}
   end
@@ -49,7 +48,6 @@ defmodule PhysicsProxy do
   end
 
   defp handle_item(item, state) do
-    Logger.info "Received: #{item}"
     json = try do
       Poison.decode!(item)
     rescue

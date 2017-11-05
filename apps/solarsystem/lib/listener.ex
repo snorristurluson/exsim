@@ -31,7 +31,6 @@ defmodule Listener do
   end
 
   defp handle_data(socket, data) do
-    Logger.info "Got data #{data}"
     json = Poison.decode(data, keys: :atoms!)
     case json do
       {:ok, %{} = details} -> handle_login(socket, details)
@@ -51,9 +50,18 @@ defmodule Listener do
     :ok = :gen_tcp.controlling_process(socket, pid)
   end
 
+  defp handle_login(socket, data) do
+    Logger.info "Invalid login"
+    IO.inspect(data)
+    authentication_loop(socket)
+  end
+
   defp serve(socket, player) do
     {:ok, data} = :gen_tcp.recv(socket, 0)
-    Player.handle_data(player, data)
+    Logger.info "serve received #{data}"
+    lines = String.split(data, "\n", [:trim])
+    IO.inspect(lines)
+    Enum.each(lines, fn item -> Player.handle_command(player, item) end)
     serve(socket, player)
   end
 

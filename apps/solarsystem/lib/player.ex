@@ -21,8 +21,12 @@ defmodule Player do
     GenServer.call(pid, {:get_ship})
   end
 
-  def handle_data(pid, data) do
-    GenServer.call(pid, {:handle_data, data})
+  def handle_command(pid, "") do
+    nil
+  end
+
+  def handle_command(pid, data) do
+    GenServer.cast(pid, {:handle_command, data})
   end
 
   def send_message(pid, message) do
@@ -47,13 +51,6 @@ defmodule Player do
     {:reply, state[:ship], state}
   end
 
-  def handle_call({:handle_data, data}, _from, state) do
-    solarsystem = GenServer.whereis({:global, "ex1"})
-    message = "Message from #{state[:id]}: #{data}"
-    Solarsystem.broadcast(solarsystem, message)
-    {:reply, :ok, state}
-  end
-
   def handle_call({:send_message, message}, _from, state) do
     socket = state[:socket]
     :gen_tcp.send(socket, message)
@@ -64,7 +61,28 @@ defmodule Player do
     {:reply, :ok, state}
   end
 
+  def handle_cast({:handle_command, cmd}, state) do
+    Logger.info "handle_command received: #{cmd}"
+    IO.inspect state
+    json = try do
+      Poison.decode!(cmd)
+    rescue
+      _ -> "error"
+    end
+    IO.inspect(json)
+    case json do
+      %{"settargetlocation" => location} -> set_target_location(location, state)
+      _ -> state
+    end
+    {:noreply, state}
+  end
+
   def handle_cast(_msg, state) do
     {:noreply, state}
+  end
+
+  defp set_target_location(location, state) do
+    Ship.set_target_location(state[:ship], location)
+    state
   end
 end

@@ -32,6 +32,10 @@ defmodule Solarsystem do
     GenServer.cast(pid, {:distribute_state, solarsystem_state})
   end
 
+  def send_queued_physics_commands(pid, commands) do
+    GenServer.cast(pid, {:send_queued_physics_commands, commands})
+  end
+
   # Server callbacks
 
   def init(name) do
@@ -57,8 +61,8 @@ defmodule Solarsystem do
     command = %{command: "addship", owner: player_id, type: typeid, position: %{x: x, y: y, z: z}}
     PhysicsProxy.send_command(state[:physics], command)
 
-    {_, state} = Map.get_and_update(state, :players, fn current -> {:players, [player | current]} end)
-    {_, state} = Map.get_and_update(state, :ships, fn current -> {:ships, [ship | current]} end)
+    {_, state} = Map.get_and_update(state, :players, fn current -> {current, [player | current]} end)
+    {_, state} = Map.get_and_update(state, :ships, fn current -> {current, [ship | current]} end)
 
     {:reply, :ok, state}
   end
@@ -76,7 +80,7 @@ defmodule Solarsystem do
 
   def handle_cast({:notify_ship_update_done, ship}, state) do
     state = Map.put(state, :tick_start_time, System.monotonic_time(:millisecond))
-    {_, newstate} = Map.get_and_update(state, :pending_ships, fn current -> {:pending_ships, List.delete(current, ship)} end)
+    {_, newstate} = Map.get_and_update(state, :pending_ships, fn current -> {current, List.delete(current, ship)} end)
     case newstate[:pending_ships] do
       [] -> GenServer.cast(self(), {:end_tick})
     end
@@ -99,6 +103,11 @@ defmodule Solarsystem do
     {:noreply, state}
   end
 
+  def handle_cast({:send_queued_physics_commands, commands}, state) do
+    send_queued_physics_commands_helper(state[:physics], commands)
+    {:noreply, state}
+  end
+
   def handle_info({:start_tick}, state) do
     ships = state[:ships]
     Enum.each(ships, fn ship -> Ship.update(ship) end)
@@ -112,5 +121,15 @@ defmodule Solarsystem do
   end
 
   defp send_message_to_players(_message, []), do: nil
+
+  defp send_queued_physics_commands_helper(physics, commands) do
+    case :queue.out(commands) do
+      {:empty, commands} ->
+        Logger.info "queue is empty"
+      {{:value, cmd}, remaining} ->
+        PhysicsProxy.send_command(physics, cmd)
+        send_queued_physics_commands_helper(physics, remaining)
+    end
+  end
 
 end

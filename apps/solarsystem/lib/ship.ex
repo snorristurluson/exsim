@@ -23,6 +23,10 @@ defmodule Ship do
     GenServer.call(pid, {:set_position, pos})
   end
 
+  def set_target_location(pid, location) do
+    GenServer.cast(pid, {:set_target_location, location})
+  end
+
   def get_typeid(pid) do
     GenServer.call(pid, {:get_typeid})
   end
@@ -41,6 +45,7 @@ defmodule Ship do
     Logger.info "Ship init"
     pos = {:rand.uniform() * 800, :rand.uniform() * 600, 0}
     state = Map.put(state, :pos, pos)
+    state = Map.put(state, :pending_commands, :queue.new())
     {:ok, state}
   end
 
@@ -66,8 +71,27 @@ defmodule Ship do
     {:reply, :ok, state}
   end
 
+  def handle_cast({:set_target_location, location}, state) do
+    command = %{
+      command: "setshiptargetlocation",
+      ship: state[:owner],
+      location: location
+    }
+    {_, state} = Map.get_and_update(
+      state,
+      :pending_commands,
+      fn current -> {:pending_commands, :queue.in(command, current)} end)
+    {:noreply, state}
+  end
+
   def handle_cast({:update}, state) do
-    # todo: send queued commands
+    Logger.info "ship update"
+    IO.inspect(state)
+    {commands, state} = Map.get_and_update(
+      state,
+      :pending_commands,
+      fn current -> {current, :queue.new()} end)
+    Solarsystem.send_queued_physics_commands(state[:solarsystem], commands)
     Solarsystem.notify_ship_update_done(state[:solarsystem], self())
     {:noreply, state}
   end

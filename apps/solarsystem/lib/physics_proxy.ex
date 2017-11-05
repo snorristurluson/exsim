@@ -25,7 +25,8 @@ defmodule PhysicsProxy do
 
   def handle_call({:send_command, command}, _from, state) do
     {:ok, json} = Poison.encode(command)
-    :gen_tcp.send(state[:socket], json)
+    Logger.info "Physics proxy send command #{json}"
+    :gen_tcp.send(state[:socket], json <> "\n")
     {:reply, :ok, state}
   end
 
@@ -38,21 +39,22 @@ defmodule PhysicsProxy do
   end
 
   def handle_info({:tcp, socket, data}, state) do
-    lines = String.split(data, "\n")
+    lines = String.split(data, "\n", [:trim])
     Enum.each(lines, fn x -> handle_item(x, state) end)
     {:noreply, state}
+  end
+
+  defp handle_item("", state) do
+    state
   end
 
   defp handle_item(item, state) do
     Logger.info "Received: #{item}"
     json = try do
-      decoded = Poison.decode!(item)
-      Logger.info "Decoded json"
-      decoded
+      Poison.decode!(item)
     rescue
       _ -> "error"
     end
-    IO.inspect(json)
     case json do
       %{"state" => solarsystem_state} -> Solarsystem.distribute_state(state[:solarsystem], solarsystem_state)
       _ -> :ok

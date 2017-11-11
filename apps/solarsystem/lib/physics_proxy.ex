@@ -14,13 +14,20 @@ defmodule PhysicsProxy do
   end
 
   def init({solarsystem, port}) do
-    {:ok, socket} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, {:packet, 0}])
-    Logger.info "Connected on port #{port}"
+    case :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :line]) do
+      {:ok, socket} ->
+        :inet.setopts(socket, [{:recbuf, 128*1024}, {:packet_size, 128*1024}])
+        Logger.info "Connected on port #{port}"
 
-    {:ok, json} = Poison.encode(%{command: "setmain"})
-    :gen_tcp.send(socket, json)
+        {:ok, json} = Poison.encode(%{command: "setmain"})
+        json = json <> "\n"
+        :gen_tcp.send(socket, json)
 
-    {:ok, %{solarsystem: solarsystem, socket: socket}}
+        {:ok, %{solarsystem: solarsystem, socket: socket}}
+      {:error, reason} ->
+        Logger.info "Can't connect to physics server: #{reason}"
+        {:ignore, "Can't connect to physics server"}
+    end
   end
 
   def handle_call({:send_command, command}, _from, state) do
@@ -38,18 +45,8 @@ defmodule PhysicsProxy do
   end
 
   def handle_info({:tcp, socket, data}, state) do
-    lines = String.split(data, "\n", [:trim])
-    Enum.each(lines, fn x -> handle_item(x, state) end)
-    {:noreply, state}
-  end
-
-  defp handle_item("", state) do
-    state
-  end
-
-  defp handle_item(item, state) do
     json = try do
-      Poison.decode!(item)
+      Poison.decode!(data)
     rescue
       _ -> "error"
     end
@@ -57,5 +54,6 @@ defmodule PhysicsProxy do
       %{"state" => solarsystem_state} -> Solarsystem.distribute_state(state[:solarsystem], solarsystem_state)
       _ -> :ok
     end
+    {:noreply, state}
   end
 end

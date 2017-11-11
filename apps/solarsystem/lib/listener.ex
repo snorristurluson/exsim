@@ -13,6 +13,7 @@ defmodule Listener do
   end
 
   defp loop_acceptor(socket) do
+    Logger.info "Waiting for connection"
     {:ok, client} = :gen_tcp.accept(socket)
     Logger.info "Connection established"
     {:ok, pid} = Task.start_link(
@@ -42,23 +43,19 @@ defmodule Listener do
   defp handle_login(socket, %{:user => user}) do
     {:ok, player} = Player.start_link(user, socket)
     {:ok, solarsystem} = Solarsystem.start("ex1")
-    Solarsystem.add_player(solarsystem, player)
-    {:ok, pid} = Task.start_link(
-      fn -> serve(socket, player) end)
-    :ok = :gen_tcp.controlling_process(socket, pid)
+    ship = Player.get_ship(player)
+    Solarsystem.add_ship(solarsystem, ship)
+    Logger.info "Transferring socket to player"
+    :ok = :gen_tcp.controlling_process(socket, player)
+    Logger.info "Making socket active"
+    :inet.setopts(socket, [{:active, :true}])
+    Logger.info "Logged in"
   end
 
   defp handle_login(socket, data) do
     Logger.info "Invalid login"
     IO.inspect(data)
     authentication_loop(socket)
-  end
-
-  defp serve(socket, player) do
-    {:ok, data} = :gen_tcp.recv(socket, 0)
-    lines = String.split(data, "\n", [:trim])
-    Enum.each(lines, fn item -> Player.handle_command(player, item) end)
-    serve(socket, player)
   end
 
 end

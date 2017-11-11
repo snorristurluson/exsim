@@ -15,6 +15,11 @@ defmodule Ship do
   def set_solarsystem(pid, solarsystem) do
     GenServer.call(pid, {:set_solarsystem, solarsystem})
   end
+
+  def get_solarsystem(pid) do
+    GenServer.call(pid, {:get_solarsystem})
+  end
+
   def get_position(pid) do
     GenServer.call(pid, {:get_position})
   end
@@ -25,6 +30,10 @@ defmodule Ship do
 
   def set_target_location(pid, location) do
     GenServer.cast(pid, {:set_target_location, location})
+  end
+
+  def get_owner(pid) do
+    GenServer.call(pid, {:get_owner})
   end
 
   def get_typeid(pid) do
@@ -63,6 +72,14 @@ defmodule Ship do
     {:reply, :ok, state}
   end
 
+  def handle_call({:get_solarsystem}, _from, state) do
+    {:reply, state[:solarsystem], state}
+  end
+
+  def handle_call({:get_owner}, _from, state) do
+    {:reply, state[:owner], state}
+  end
+
   def handle_call({:get_typeid}, _from, state) do
     {:reply, state[:typeid], state}
   end
@@ -97,10 +114,16 @@ defmodule Ship do
   def handle_cast({:send_solarsystem_state, solarsystem_state}, state) do
     {:ok, json} = Poison.encode(solarsystem_state)
     :gen_tcp.send(state[:socket], json)
+    Solarsystem.notify_ship_state_delivered(state[:solarsystem], self())
     {:noreply, state}
   end
 
   def handle_cast(_msg, state) do
     {:noreply, state}
+  end
+
+  def terminate(reason, state) do
+    Logger.info "Terminating ship #{state[:owner]}"
+    :normal
   end
 end

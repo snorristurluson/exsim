@@ -21,14 +21,6 @@ defmodule Player do
     GenServer.call(pid, {:get_ship})
   end
 
-  def handle_command(pid, "") do
-    nil
-  end
-
-  def handle_command(pid, data) do
-    GenServer.cast(pid, {:handle_command, data})
-  end
-
   def send_message(pid, message) do
     GenServer.call(pid, {:send_message, message})
   end
@@ -61,7 +53,8 @@ defmodule Player do
     {:reply, :ok, state}
   end
 
-  def handle_cast({:handle_command, cmd}, state) do
+  def handle_info({:tcp, socket, cmd}, state) do
+    Logger.info "Received: #{cmd}"
     json = try do
       Poison.decode!(cmd)
     rescue
@@ -74,8 +67,27 @@ defmodule Player do
     {:noreply, state}
   end
 
+  def handle_info({:tcp_closed, socket}, state) do
+    Logger.info "Socket closed for player #{state[:id]}"
+    {:stop, :normal, state}
+  end
+
+  def handle_info(_, state) do
+    Logger.info "Unhandled info"
+    {:noreply, state}
+  end
+
   def handle_cast(_msg, state) do
     {:noreply, state}
+  end
+
+  def terminate(reason, state) do
+    Logger.info "Terminating player #{state[:id]}"
+    ship = state[:ship]
+    solarsystem = Ship.get_solarsystem(ship)
+    Solarsystem.remove_ship(solarsystem, ship)
+    GenServer.stop(ship, :normal)
+    :normal
   end
 
   defp set_target_location(location, state) do

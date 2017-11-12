@@ -149,6 +149,16 @@ defmodule Solarsystem do
   end
 
   def handle_cast({:distribute_state, solarsystem_state}, state) do
+    newShips = solarsystem_state["ships"]
+    Enum.each(newShips,
+      fn shipData ->
+        shipId = shipData["owner"]
+        Logger.info "Looking up pid for ship_#{shipId}"
+        ship = GenServer.whereis({:global, "ship_#{shipId}"})
+        Ship.set_position(ship, shipData["position"])
+        Ship.set_in_range(ship, shipData["inrange"])
+      end
+    )
     Enum.each(state[:ships], fn ship -> Ship.send_solarsystem_state(ship, solarsystem_state) end)
     {:noreply, state}
   end

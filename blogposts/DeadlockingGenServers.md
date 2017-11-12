@@ -10,6 +10,8 @@ Once logged in, a **Player** is created, and a **Solarsystem** is started
 (if it hasn't already). The solar system also starts a **PhysicsProxy**, 
 and the player starts a **Ship**. These are all GenServer processes.
 
+The source for this is up on GitHub: https://github.com/snorristurluson/exsim
+
 ## Player
 The player takes ownership of the TCP connection and handles communication
 with the game client (or bot). Incoming messages are parsed in *handle_info/2*

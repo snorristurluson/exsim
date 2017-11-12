@@ -9,7 +9,12 @@ defmodule Ship do
 
   def start_link(owner, typeid, socket) do
     state = %{owner: owner, typeid: typeid, socket: socket}
-    GenServer.start_link(__MODULE__, state, [])
+    name = "ship_#{owner}"
+    GenServer.start_link(__MODULE__, state, [{:name, {:global, name}}])
+  end
+
+  def find(name) do
+
   end
 
   def set_solarsystem(pid, solarsystem) do
@@ -30,6 +35,10 @@ defmodule Ship do
 
   def set_target_location(pid, location) do
     GenServer.cast(pid, {:set_target_location, location})
+  end
+
+  def set_in_range(pid, inrange) do
+    GenServer.cast(pid, {:set_in_range, inrange})
   end
 
   def get_owner(pid) do
@@ -101,6 +110,12 @@ defmodule Ship do
     {:noreply, state}
   end
 
+  def handle_cast({:set_in_range, inrange}, state) do
+    IO.inspect(inrange)
+    state = Map.put(state, :in_range, inrange)
+    {:noreply, state}
+  end
+
   def handle_cast({:update}, state) do
     {commands, state} = Map.get_and_update(
       state,
@@ -112,7 +127,22 @@ defmodule Ship do
   end
 
   def handle_cast({:send_solarsystem_state, solarsystem_state}, state) do
-    {:ok, json} = Poison.encode(solarsystem_state)
+    me = %{"owner" => state[:owner], "type" => state[:typeid], "position" => state[:pos]}
+    ships = [me]
+    ships = List.foldl(
+      state[:in_range],
+      ships,
+      fn (other, acc) ->
+        Logger.info "Finding pid for #{other}"
+        other_ship = GenServer.whereis({:global, "ship_#{other}"})
+        other_desc = %{
+          "owner" => other,
+          "type" => Ship.get_typeid(other_ship),
+          "position" => Ship.get_position(other_ship)
+        }
+        List.append(acc, other_desc)
+      end)
+    {:ok, json} = Poison.encode(%{"state" => %{"ships" => ships}})
     :gen_tcp.send(state[:socket], json)
     Solarsystem.notify_ship_state_delivered(state[:solarsystem], self())
     {:noreply, state}

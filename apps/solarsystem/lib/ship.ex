@@ -61,7 +61,7 @@ defmodule Ship do
 
   def init(state) do
     Logger.info "Ship init"
-    pos = {:rand.uniform() * 800, :rand.uniform() * 600, 0}
+    pos = %{ x: :rand.uniform() * 5000 - 2500, y: :rand.uniform() * 5000 - 2500, z: 0}
     state = Map.put(state, :pos, pos)
     state = Map.put(state, :pending_commands, :queue.new())
     {:ok, state}
@@ -100,8 +100,10 @@ defmodule Ship do
   def handle_cast({:set_target_location, location}, state) do
     command = %{
       command: "setshiptargetlocation",
-      ship: state[:owner],
-      location: location
+      params: %{
+        shipid: state[:owner],
+        location: location
+      },
     }
     {_, state} = Map.get_and_update(
       state,
@@ -127,23 +129,25 @@ defmodule Ship do
   end
 
   def handle_cast({:send_solarsystem_state, solarsystem_state}, state) do
-    me = %{"owner" => state[:owner], "type" => state[:typeid], "position" => state[:pos]}
-    ships = [me]
-    ships = List.foldl(
-      state[:in_range],
-      ships,
-      fn (other, acc) ->
-        Logger.info "Finding pid for #{other}"
-        other_ship = GenServer.whereis({:global, "ship_#{other}"})
-        other_desc = %{
-          "owner" => other,
-          "type" => Ship.get_typeid(other_ship),
-          "position" => Ship.get_position(other_ship)
-        }
-        List.append(acc, other_desc)
-      end)
-    {:ok, json} = Poison.encode(%{"state" => %{"ships" => ships}})
-    :gen_tcp.send(state[:socket], json)
+    all_ships = solarsystem_state["ships"]
+    me = all_ships["ship_#{state[:owner]}"]
+    case me do
+      nil ->
+        # Ship didn't exist in the solar system state, can happen on the
+        # first tick when a ship is added
+        nil
+      _ ->
+        ships = [me]
+        ships = List.foldl(
+          me["inrange"],
+          ships,
+          fn (other, acc) ->
+            other_ship = all_ships["ship_#{other}"]
+            [other_ship | acc]
+          end)
+        {:ok, json} = Poison.encode(%{"state" => %{"ships" => ships}})
+        :gen_tcp.send(state[:socket], json <> "\n")
+    end
     Solarsystem.notify_ship_state_delivered(state[:solarsystem], self())
     {:noreply, state}
   end

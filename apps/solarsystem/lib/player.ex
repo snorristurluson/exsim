@@ -54,7 +54,6 @@ defmodule Player do
   end
 
   def handle_info({:tcp, socket, cmd}, state) do
-    Logger.info "Received: #{cmd}"
     json = try do
       Poison.decode!(cmd)
     rescue

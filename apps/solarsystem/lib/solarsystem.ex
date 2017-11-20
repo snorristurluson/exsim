@@ -70,8 +70,8 @@ defmodule Solarsystem do
     Ship.set_solarsystem(ship, self())
     owner = Ship.get_owner(ship)
     typeid = Ship.get_typeid(ship)
-    {x, y, z} = Ship.get_position(ship)
-    command = %{command: "addship", owner: owner, type: typeid, position: %{x: x, y: y, z: z}}
+    pos = Ship.get_position(ship)
+    command = %{command: "addship", params: %{owner: owner, typeid: typeid, position: pos}}
     PhysicsProxy.send_command(state[:physics], command)
 
     {prevShips, state} = Map.get_and_update(state, :ships, fn current -> {current, [ship | current]} end)
@@ -90,7 +90,7 @@ defmodule Solarsystem do
   def handle_call({:remove_ship, ship}, _from, state) do
     Logger.info "Removing ship from solarsystem #{state[:name]}"
     owner = Ship.get_owner(ship)
-    command = %{command: "removeship", owner: owner}
+    command = %{command: "removeship", params: %{owner: owner}}
     PhysicsProxy.send_command(state[:physics], command)
 
     {_, state} = Map.get_and_update(state, :ships, fn current -> {current, List.delete(current, ship)} end)
@@ -119,47 +119,41 @@ defmodule Solarsystem do
   end
 
   def handle_cast({:notify_ship_state_delivered, ship}, state) do
-    {_, newstate} = Map.get_and_update(state, :pending_ships_state, fn current -> {current, List.delete(current, ship)} end)
-    case newstate[:pending_ships_state] do
-      [] -> GenServer.cast(self(), {:end_tick})
-      _ -> nil
-    end
-    {:noreply, newstate}
+#    {_, newstate} = Map.get_and_update(state, :pending_ships_state, fn current -> {current, List.delete(current, ship)} end)
+#    case newstate[:pending_ships_state] do
+#      [] -> GenServer.cast(self(), {:end_tick})
+#      _ -> nil
+#    end
+    {:noreply, state}
   end
 
   def handle_cast({:end_update}, state) do
     ships = state[:ships]
     state = Map.put(state, :pending_ships_state, ships)
 
-    do_end_update(ships, state)
-    {:noreply, state}
-  end
+    PhysicsProxy.send_command(state[:physics], %{command: "stepsimulation", params: %{timestep: 0.250}})
+    PhysicsProxy.send_command(state[:physics], %{command: "getstate"})
 
-  def handle_cast({:end_tick}, state) do
     tick_duration = System.monotonic_time(:millisecond) - state[:tick_start_time]
-    # Logger.info "Tick duration: #{tick_duration}"
+    Logger.info "Tick duration: #{tick_duration}"
     tick_duration = if tick_duration > 250 do
       250
     else
       tick_duration
     end
     Process.send_after(self(), {:start_tick}, 250 - tick_duration)
+    {:noreply, state}
+  end
 
+  def handle_cast({:end_tick}, state) do
     {:noreply, state}
   end
 
   def handle_cast({:distribute_state, solarsystem_state}, state) do
-    newShips = solarsystem_state["ships"]
-    Enum.each(newShips,
-      fn shipData ->
-        shipId = shipData["owner"]
-        Logger.info "Looking up pid for ship_#{shipId}"
-        ship = GenServer.whereis({:global, "ship_#{shipId}"})
-        Ship.set_position(ship, shipData["position"])
-        Ship.set_in_range(ship, shipData["inrange"])
-      end
-    )
+    start = System.monotonic_time(:millisecond)
     Enum.each(state[:ships], fn ship -> Ship.send_solarsystem_state(ship, solarsystem_state) end)
+    duration = System.monotonic_time(:millisecond) - start
+    Logger.info "Distribute state: #{duration}"
     {:noreply, state}
   end
 
@@ -177,8 +171,6 @@ defmodule Solarsystem do
   end
 
   def handle_info({:end_update}, state) do
-    # This code path applies when there are no ships in the system
-    do_end_update([], state)
     {:noreply, state}
   end
 
@@ -195,16 +187,6 @@ defmodule Solarsystem do
 
   defp start_update(ships) do
     Enum.each(ships, fn ship -> Ship.update(ship) end)
-  end
-
-  defp do_end_update(ships, state) do
-    PhysicsProxy.send_command(state[:physics], %{command: "stepsimulation", timestep: 0.250})
-    PhysicsProxy.send_command(state[:physics], %{command: "getstate"})
-
-    case ships do
-      [] -> Process.send(self(), {:end_tick}, [])
-      _ -> :nil
-    end
   end
 
   defp send_message_to_players(message, [head|tail]) do
